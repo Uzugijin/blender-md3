@@ -20,7 +20,7 @@ What the export addon handles:
    
 3. One UV Map (first will be chosen) per object (UVmap name does not matter but keep it in sync with texture name) - does not throw error if uvmap not found.  
 
-It does not seem to care about materials for some reason - textures will be mapped onto mesh if uvmap exists (uvmap name drives what texture name to look for). (can be assigned in Maverick or Npherno)
+It does not seem to care about materials for some reason, only about blank materials on the mesh - textures will be mapped onto mesh if uvmap exists (uvmap name drives what texture name to look for). (can be assigned in Maverick or Npherno)
 For multiple textures, uvmap should be named something else, idk what happens if two meshes have same named uvs but with differnt layout, which textures they are gonna use then?
 
 ## Supported versions
