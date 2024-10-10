@@ -7,7 +7,7 @@ Can work with animations in any form (no need to bake to Shape Keys), textures a
 
 Used [this](http://www.icculus.org/homepages/phaethon/q3a/formats/md3format.html) format reference.
 
-## Manual:
+## Manual for Playermodel exporting:
 CONSTRAINTS do not work! Parenting does!  
 (Naming is not enforced in blender stage of modeling but recommended ->  
 Names with .001 and alike will be ommited that will result in throwing away data in Maverick and only using the first! Npherno keeps identical names.)  
