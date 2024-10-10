@@ -125,6 +125,13 @@ class MD3Exporter:
         )
 
     def pack_surface_triangle(self, i):
+        polygon = self.mesh.polygons[i]
+        print(f"Polygon {i} has {polygon.loop_total} loops")
+        if polygon.loop_total != 3:
+            print(f"Warning: Non-triangular polygon found at index {i}")
+            # Handle non-triangular polygons
+            # You could either skip this polygon or try to triangulate it
+            return
         assert self.mesh.polygons[i].loop_total == 3
         start = self.mesh.polygons[i].loop_start
         a, b, c = (self.mesh_loop_to_md3vert[j] for j in range(start, start + 3))
@@ -195,6 +202,7 @@ class MD3Exporter:
         obj = self.scene.objects[surf_name]
         bpy.context.view_layer.objects.active = obj
         bpy.ops.object.modifier_add(type='TRIANGULATE')  # no 4-gons or n-gons
+        bpy.ops.object.modifier_apply(modifier=obj.modifiers[-1].name)
         dg = bpy.context.evaluated_depsgraph_get()
         self.mesh = obj.to_mesh(preserve_all_data_layers=True, depsgraph=dg)
 
@@ -206,6 +214,9 @@ class MD3Exporter:
         nShaders = len(self.mesh_shader_list)
         nVerts = len(self.mesh_md3vert_to_loop)
         nTris = len(self.mesh.polygons)
+
+        # Apply the triangulate modifier
+        #bpy.ops.object.modifier_apply(modifier=obj.modifiers[-1].name)
 
         self.scene.frame_set(self.scene.frame_start)
 
@@ -225,7 +236,7 @@ class MD3Exporter:
         f.mark('offEnd')
 
         # release here, to_mesh used for every frame
-        bpy.ops.object.modifier_remove(modifier=obj.modifiers[-1].name)
+        #bpy.ops.object.modifier_remove(modifier=obj.modifiers[-1].name)
 
         print('Surface {}: nVerts={}{} nTris={}{} nShaders={}{}'.format(
             surf_name,
