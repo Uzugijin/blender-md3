@@ -207,7 +207,6 @@ class Q3ImportActionsOperator(bpy.types.Operator):
     bl_label = "Import Actions"
     bl_description = "Compile Actions to NLA for export and animation sequence read."
     def execute(self, context):
-        bpy.ops.object.mode_set(mode='OBJECT')
         scene = context.scene
         q3_props = scene.q3_animation_config
         selected_objects = bpy.context.selected_objects
@@ -238,11 +237,17 @@ class Q3ImportActionsOperator(bpy.types.Operator):
                     bpy.data.actions.remove(action)
 
         if obj is None:
+            active_object_at_the_time = bpy.context.active_object
+            if bpy.context.object is not None:
+                if bpy.context.object.mode != 'OBJECT':
+                    bpy.ops.object.mode_set(mode='OBJECT')
             bpy.ops.object.empty_add(type='PLAIN_AXES', location=(0, 0, 0))
             cube = bpy.context.active_object
             cube.name = frame_buddy_name
             cube.animation_data_create()
             obj = cube
+            if active_object_at_the_time is not None:
+                bpy.context.view_layer.objects.active = bpy.data.objects[active_object_at_the_time.name]
 
         if q3_props.fill_dead:
             death_actions = ["BOTH_DEATH1", "BOTH_DEATH2", "BOTH_DEATH3"]
@@ -289,7 +294,9 @@ class Q3ImportActionsOperator(bpy.types.Operator):
                 frame_offset += strip.frame_end - strip.frame_start
         bpy.context.scene.frame_end = int(frame_offset)
 
-        bpy.ops.object.select_all(action='DESELECT')
+        if bpy.context.object is not None:
+            if bpy.context.object.mode == 'OBJECT':
+                bpy.ops.object.select_all(action='DESELECT')
         for obj in selected_objects:
             if obj is not check:
                 obj.select_set(True)
@@ -316,7 +323,10 @@ class ExportMD3(bpy.types.Operator, ExportHelper):
         try:
             from .export_md3 import MD3Exporter
             props = bpy.context.scene.q3_animation_config
-            bpy.ops.object.mode_set(mode='OBJECT')
+            # ADD CONDITION TO CHECK IF THERE IS EVEN AN ACTIVE OBJECT??
+            if bpy.context.view_layer.objects.active is not None:
+                bpy.ops.object.mode_set(mode='OBJECT')
+            ##########
             
             filepath = self.properties.filepath
             export_defined = props.export_defined
