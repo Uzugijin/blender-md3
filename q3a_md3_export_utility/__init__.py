@@ -179,6 +179,7 @@ def save_animation_config(context):
                         start_frame += 1
                     end_frame = int(strip.frame_end)
                     num_frames = end_frame - start_frame
+                    num_frames = max(1, num_frames)
 
                     name, fps, looping_frames, is_dead = parse_action_name(strip.name)
                     if looping_frames == -1:
