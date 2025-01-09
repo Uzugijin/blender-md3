@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Q3A MD3 Export Utility",
     "author": "Vitaly Verhovodov, Aleksander Marhall, Uzugijin",
-    "version": (0, 3, 0),
+    "version": (0, 4, 0),
     "blender": (4, 00, 0),
     "category": "Import-Export",
     "location": "Nonlinear Animation > Side panel (N) > Q3A MD3 XU",
@@ -22,7 +22,10 @@ class Q3AnimationConfigProperties(bpy.types.PropertyGroup):
     fixedlegs: bpy.props.BoolProperty(name="Fixed Legs", default=False, description="Don't rotate legs (always align with torso)")
     fill_dead: bpy.props.BoolProperty(name="Fill Dead", default=True, description="Create _DEAD strips for every _DEATH")
     trim_ends: bpy.props.BoolProperty(name="Trim Strips", default=True, description="Cut the end of loop strips in the NLA track")
+    mark_frames: bpy.props.BoolProperty(name="Mark Actions", default=True, description="Mark the first frame of every strip in the NLA track")
     offset_cgf_by_1: bpy.props.BoolProperty(name="Offset By 1", default=False, description="Offsets animation sequence forward by 1 frame")
+    anim_cfg_enabled: bpy.props.BoolProperty(name="Animation Config", default=True, description="Generate animation.cfg on export")
+    skin_enabled: bpy.props.BoolProperty(name="Skin Config", default=True, description="Generate .skin file templates on export")
     sex_defined: bpy.props.EnumProperty(
         items=[
             ("sex n", "Neutral", ""),
@@ -43,15 +46,6 @@ class Q3AnimationConfigProperties(bpy.types.PropertyGroup):
         name="Footsteps",
         default="footsteps normal",
     )
-    export_defined: bpy.props.EnumProperty(
-        items=[
-            ("export md3_anim", "MD3+Animation.cfg", ""),
-            ("export md3", "MD3", ""),
-            ("export anim", "Animation.cfg", ""),
-        ],
-        name="Export",
-        default="export md3_anim",
-    )
 
 class Q3AnimationConfigPanel(bpy.types.Panel):
     bl_label = "Q3A MD3 Export Utility"
@@ -65,40 +59,80 @@ class Q3AnimationConfigPanel(bpy.types.Panel):
         scene = context.scene
         q3_props = scene.q3_animation_config
 
-        #row = layout.row()
-        #row.label(text="NLA Track Target:")
         row = layout.row()
         row.prop(q3_props, "selected_object", text="Target")
         row = layout.row()
         row.prop(context.scene.q3_animation_config, "trim_ends", text="Trim Loops", toggle=False)
         row = layout.row()
-        #row.prop(context.scene.q3_animation_config, "auto_create_missing", text="Auto Create Missing Actions", toggle=False)
-        #if q3_props.auto_create_missing:
-            #row = layout.row()
-        row.prop(context.scene.q3_animation_config, "fill_dead", text="Create _DEAD Frames", toggle=False)
-        #row.prop(context.scene.q3_animation_config, "no_team_arena", text="No Team Arena Actions", toggle=False)
+        row.prop(context.scene.q3_animation_config, "mark_frames", text="Mark First Frame of Strips", toggle=False)
+        row = layout.row()
+        row.prop(context.scene.q3_animation_config, "fill_dead", text="Create _DEAD Strips", toggle=False)
+
         row = layout.row()
         row.operator("q3.import_actions", text="(Re)Build NLA")
 
         row = layout.row()
-        row.label(text="Animation Config:")
-        row = layout.row()
-        row.prop(q3_props, "sex_defined")
-        row = layout.row()
-        row.prop(q3_props, "footsteps_defined")
+        box = layout.box()
+        row = box.row()
+        row.label(text="Animation.cfg:")
+        row.prop(context.scene.q3_animation_config, "anim_cfg_enabled", text="Generate", toggle=False)
 
-        row = layout.row()
-        row.prop(context.scene.q3_animation_config, "fixedtorso", text="Fixed Torso", toggle=False)
-        row.prop(context.scene.q3_animation_config, "fixedlegs", text="Fixed Legs", toggle=False)
-        row = layout.row()
-        row.prop(context.scene.q3_animation_config, "offset_cgf_by_1", text="Offset Sequence", toggle=False)
-        row = layout.row()
-        row.prop(q3_props, "export_defined")
+        if context.scene.q3_animation_config.anim_cfg_enabled:
+            row = box.row()
+            row.prop(q3_props, "sex_defined")
+            row = box.row()
+            row.prop(q3_props, "footsteps_defined")
+
+            row = box.row()
+            row.prop(context.scene.q3_animation_config, "fixedtorso", text="Fixed Torso", toggle=False)
+            row.prop(context.scene.q3_animation_config, "fixedlegs", text="Fixed Legs", toggle=False)
+            row = box.row()
+            row.prop(context.scene.q3_animation_config, "offset_cgf_by_1", text="Offset Sequence", toggle=False)
+        box = layout.box()
+        row = box.row()
+        row.label(text="Skin Template:")
+        row.prop(q3_props, "skin_enabled", text="Generate", toggle=False)
 
         row = layout.row()
         row.operator("export_scene.md3", text="Export")
         row = layout.row()
         row.operator("q3.open_cheatsheet", text="Open Cheatsheet")
+
+def save_skin_file(context):
+
+    objects = bpy.context.selected_objects
+
+    head_text = "tag_head,\n"
+    if "tag_flag" in objects:
+        upper_text = "tag_head,\ntag_torso,\ntag_weapon,\ntag_flag,\n"
+    else:
+        upper_text = "tag_head,\ntag_torso,\ntag_weapon,\n"
+    if "tag_floor" in objects:
+        lower_text = "tag_torso,\ntag_floor,\n"
+    else:
+        lower_text = "tag_torso,\n"
+
+    is_head = False
+    is_upper = False
+    is_lower = False
+
+    blend_filename = bpy.path.display_name(bpy.context.blend_data.filepath)
+
+    for object in objects:
+        if object.name.startswith("h_"):
+            print(f"Head: {object.name}")
+            head_text += f"h_{object.name[2:]},models/players/{blend_filename.lower()}/<texture>.tga\n"
+            is_head = True
+        elif object.name.startswith("l_"):
+            print(f"Lower: {object.name}")
+            lower_text += f"l_{object.name[2:]},models/players/{blend_filename.lower()}/<texture>.tga\n"
+            is_lower = True
+        elif object.name.startswith("u_"):
+            print(f"Upper: {object.name}")
+            upper_text += f"u_{object.name[2:]},models/players/{blend_filename.lower()}/<texture>.tga\n"
+            is_upper = True
+
+    return head_text, upper_text, lower_text, is_head, is_upper, is_lower
 
 def save_animation_config(context):
     scene = context.scene
@@ -141,7 +175,7 @@ def save_animation_config(context):
             looping_frames = num_frames  # Placeholder to indicate looping frames should match num_frames
 
         if name in dead_anims:
-            is_dead = False
+            is_dead = True
 
         for part in parts[1:]:
             if part.isdigit():
@@ -174,6 +208,8 @@ def save_animation_config(context):
         if obj and obj.animation_data and obj.animation_data.nla_tracks:
             for track in obj.animation_data.nla_tracks:
                 for strip in track.strips:
+                    if strip.name in ['BOTH_DEAD1', 'BOTH_DEAD2', 'BOTH_DEAD3']:
+                        continue
                     start_frame = int(strip.frame_start)
                     if q3_props.offset_cgf_by_1:
                         start_frame += 1
@@ -225,17 +261,17 @@ class Q3ImportActionsOperator(bpy.types.Operator):
             # Check if a cube object already exists
         frame_buddy_name = "NLA-Compiler"
 
-        existing_cube = bpy.data.objects.get(frame_buddy_name)
-        if existing_cube:
+        #existing_cube = bpy.data.objects.get(frame_buddy_name)
+        #if existing_cube:
             # Delete the existing cube object and its associated data
-            for obj2 in bpy.data.objects:
-                if frame_buddy_name in obj2.name:
-                    bpy.data.objects.remove(obj2)
+        for obj2 in bpy.data.objects:
+            if frame_buddy_name in obj2.name:
+                bpy.data.objects.remove(obj2)
 
             # Delete actions
-            for action in bpy.data.actions:
-                if frame_buddy_name in action.name:
-                    bpy.data.actions.remove(action)
+        for action in bpy.data.actions:
+            if frame_buddy_name in action.name:
+                bpy.data.actions.remove(action)
 
         if obj is None:
             active_object_at_the_time = bpy.context.active_object
@@ -295,6 +331,69 @@ class Q3ImportActionsOperator(bpy.types.Operator):
                 frame_offset += strip.frame_end - strip.frame_start
         bpy.context.scene.frame_end = int(frame_offset)
 
+        
+
+        if q3_props.mark_frames:
+
+                    bpy.ops.object.empty_add(type='ARROWS', location=(0, 0, 0))
+                    cube = bpy.context.active_object
+                    cube.name = frame_buddy_name + " Marker"
+                    cube.animation_data_create()
+                    # Create an action for the cube
+                    cube_action = bpy.data.actions.new(frame_buddy_name + " Marked Frames")
+                    # Initialize variables
+                    y_offset = 14
+                    z_offset = 35
+                    y_direction = 1
+                    z_direction = 1
+
+                    cube.animation_data_create()
+                    cube.animation_data.action = cube_action
+
+                    #track = obj.animation_data.nla_tracks
+                    #track.name = "Q3ANIM"
+                    # Iterate over the NLA strips
+                    current_frame = bpy.context.scene.frame_current
+                    for strip in track.strips:
+                        # Calculate the new Y and Z positions
+                        new_y = y_offset * y_direction
+                        new_z = z_offset * z_direction
+
+                        # Set the current frame to the strip's start frame
+                        if q3_props.offset_cgf_by_1:
+                            bpy.context.scene.frame_set(int(strip.frame_start)+1)
+                        else:
+                            bpy.context.scene.frame_set(int(strip.frame_start))
+
+                        # Insert a keyframe for the cube's position
+                        cube.location = (0, new_y, new_z)
+                        #bpy.ops.anim.keyframe_insert(type='Location')
+                        cube.keyframe_insert(data_path="location")
+
+                        # Update the Y and Z directions for the next strip
+                        y_direction *= -1
+                        z_direction *= -1
+                        if z_direction == -1:
+                            z_offset = 23
+                        else:
+                            z_offset = 35
+
+                    bpy.context.scene.frame_set(current_frame)
+
+                    fcurve_x = cube.animation_data.action.fcurves.find('location', index=0)
+                    fcurve_y = cube.animation_data.action.fcurves.find('location', index=1)
+                    fcurve_z = cube.animation_data.action.fcurves.find('location', index=2)
+
+                    for kp in fcurve_x.keyframe_points:
+                        kp.interpolation = 'CONSTANT'
+                    for kp in fcurve_y.keyframe_points:
+                        kp.interpolation = 'CONSTANT'
+                    for kp in fcurve_z.keyframe_points:
+                        kp.interpolation = 'CONSTANT'
+
+
+
+
         if bpy.context.object is not None:
             if bpy.context.object.mode == 'OBJECT':
                 bpy.ops.object.select_all(action='DESELECT')
@@ -313,11 +412,7 @@ class ExportMD3(bpy.types.Operator, ExportHelper):
 
     def invoke(self, context, event):
         props = bpy.context.scene.q3_animation_config
-        export_defined = props.export_defined
-        if export_defined == 'export md3' or export_defined == 'export md3_anim':
-            self.filename_ext = ".md3"
-        elif export_defined == 'export anim':
-            self.filename_ext = ".cfg"
+        self.filename_ext = ".md3"
         return ExportHelper.invoke(self, context, event)
 
     def execute(self, context):
@@ -330,25 +425,31 @@ class ExportMD3(bpy.types.Operator, ExportHelper):
             ##########
             
             filepath = self.properties.filepath
-            export_defined = props.export_defined
             
-            if export_defined == 'export md3':
-                if not bpy.context.selected_objects:
-                    bpy.ops.object.select_all(action='SELECT')
-                    self.report({'WARNING'}, "Assuming all objects")
-                MD3Exporter(context)(self.properties.filepath)
-            elif export_defined == 'export md3_anim':
-                if not bpy.context.selected_objects:
-                    bpy.ops.object.select_all(action='SELECT')
-                    self.report({'WARNING'}, "Assuming all objects")
-                MD3Exporter(context)(self.properties.filepath)
+           
+            if not bpy.context.selected_objects:
+                bpy.ops.object.select_all(action='SELECT')
+                self.report({'WARNING'}, "Assuming all objects")
+
+            MD3Exporter(context)(self.properties.filepath)
+            if props.anim_cfg_enabled:
                 animation_cfg_path = filepath.replace('.md3', '_animation.cfg')
                 with open(animation_cfg_path, 'w') as f:
                     f.write(save_animation_config(context))
-            elif export_defined == 'export anim':
-                animation_cfg_path = self.properties.filepath
-                with open(animation_cfg_path, 'w') as f:
-                    f.write(save_animation_config(context))
+            if props.skin_enabled:
+                head_text, upper_text, lower_text, is_head, is_upper, is_lower = save_skin_file(context)
+                if is_head:
+                    with open(self.properties.filepath.replace('.md3', '_head_default.skin'), 'w') as f:
+                        f.write(head_text)
+
+                if is_upper:
+                    with open(self.properties.filepath.replace('.md3', '_upper_default.skin'), 'w') as f:
+                        f.write(upper_text)
+
+                if is_lower:
+                    with open(self.properties.filepath.replace('.md3', '_lower_default.skin'), 'w') as f:
+                        f.write(lower_text)
+
             self.report({'INFO'}, "Export complete!")
             return {'FINISHED'}
         except struct.error:
