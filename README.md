@@ -16,7 +16,7 @@ What the export addon handles:
 
 1. Selected (fully triangulated!] mesh <objects> (object names doesn't matter, it doesn't expect h_, u_, l_ names to exist, they can be assigned in maverick or npherno - but can be assigned in blender via OBJECT names) - throws error if selected is not triangles fully (floating edges or vertexes will be omited) - doesn't throw error if nothing is selected or selected type is unhandled.  
 				
-2. Selected empty <objects> of Arrows type <or> no tags at all (empty type can be changed in blender) (empty names doesn't matter, it doesn't expect tag_* names to exist, they can be assigned in maverick or npherno - but can be assigned in blender via OBJECT names)- does not throw any error if there is no empty or empty type is different.  
+2. Selected empty <objects> of Arrows type or no tags at all (empty type can be changed in blender) (empty names doesn't matter, it doesn't expect tag_* names to exist, they can be assigned in maverick or npherno - but can be assigned in blender via OBJECT names)- does not throw any error if there is no empty or empty type is different.  
    
 3. One UV Map (first will be chosen) per object (UVmap name does not matter but keep it in sync with texture name) - does not throw error if uvmap not found.  
 
