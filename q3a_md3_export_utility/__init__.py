@@ -13,6 +13,7 @@ bl_info = {
 
 import bpy
 import struct
+import re
 from bpy.props import StringProperty
 from bpy_extras.io_utils import ExportHelper
 
@@ -20,10 +21,8 @@ class Q3AnimationConfigProperties(bpy.types.PropertyGroup):
     selected_object: bpy.props.PointerProperty(name="Target object to import actions to", type=bpy.types.Object, description="Recommended for single skeleton, otherwise leave blank to generate a dummy")
     fixedtorso: bpy.props.BoolProperty(name="Fixed Torso", default=False, description="Don't rotate torso pitch when looking up or down")
     fixedlegs: bpy.props.BoolProperty(name="Fixed Legs", default=False, description="Don't rotate legs (always align with torso)")
-    fill_dead: bpy.props.BoolProperty(name="Fill Dead", default=True, description="Create _DEAD strips for every _DEATH")
-    trim_ends: bpy.props.BoolProperty(name="Trim Strips", default=True, description="Cut the end of loop strips in the NLA track")
     mark_frames: bpy.props.BoolProperty(name="Mark Actions", default=True, description="Mark the first frame of every strip in the NLA track")
-    offset_cgf_by_1: bpy.props.BoolProperty(name="Offset By 1", default=False, description="Offsets animation sequence forward by 1 frame")
+    offset_cgf_by_1: bpy.props.BoolProperty(name="Offset By 1", default=False, description="Offsets animation sequence forward by 1 frame for marker and animation.cfg")
     anim_cfg_enabled: bpy.props.BoolProperty(name="Animation Config", default=True, description="Generate animation.cfg on export")
     skin_enabled: bpy.props.BoolProperty(name="Skin Config", default=True, description="Generate .skin file templates on export")
     sex_defined: bpy.props.EnumProperty(
@@ -62,11 +61,9 @@ class Q3AnimationConfigPanel(bpy.types.Panel):
         row = layout.row()
         row.prop(q3_props, "selected_object", text="Target")
         row = layout.row()
-        row.prop(context.scene.q3_animation_config, "trim_ends", text="Trim Loops", toggle=False)
-        row = layout.row()
         row.prop(context.scene.q3_animation_config, "mark_frames", text="Mark First Frame of Strips", toggle=False)
         row = layout.row()
-        row.prop(context.scene.q3_animation_config, "fill_dead", text="Create _DEAD Strips", toggle=False)
+        row.prop(context.scene.q3_animation_config, "offset_cgf_by_1", text="Offset Sequence", toggle=False)
 
         row = layout.row()
         row.operator("q3.import_actions", text="(Re)Build NLA")
@@ -86,8 +83,7 @@ class Q3AnimationConfigPanel(bpy.types.Panel):
             row = box.row()
             row.prop(context.scene.q3_animation_config, "fixedtorso", text="Fixed Torso", toggle=False)
             row.prop(context.scene.q3_animation_config, "fixedlegs", text="Fixed Legs", toggle=False)
-            row = box.row()
-            row.prop(context.scene.q3_animation_config, "offset_cgf_by_1", text="Offset Sequence", toggle=False)
+
         box = layout.box()
         row = box.row()
         row.label(text="Skin Template:")
@@ -147,40 +143,23 @@ def save_animation_config(context):
             print({'ERROR'}, "Please select an armature or create an object named 'NLA-Compiler'!")
             return None
 
-    def parse_action_name(action_name):
-        looping_anims = [
-            'LEGS_WALKCR',
-            'LEGS_WALK',
-            'LEGS_RUN',
-            'LEGS_BACK',
-            'LEGS_SWIM',
-            'LEGS_IDLE',
-            'LEGS_IDLECR',
-            'LEGS_TURN'
-        ]
-
-        dead_anims = [
-            'BOTH_DEATH1',
-            'BOTH_DEATH2',
-            'BOTH_DEATH3'
-        ]
-
+    def parse_action_name(action_name, psuedo_name):
         parts = action_name.split('.')
         name = parts[0]
         fps = bpy.context.scene.render.fps
         looping_frames = 0
         is_dead = False
 
-        if name in looping_anims:
+        if 'loop' in name.lower():
             looping_frames = num_frames  # Placeholder to indicate looping frames should match num_frames
 
-        if name in dead_anims:
+        if 'die' in name.lower():
             is_dead = True
 
         for part in parts[1:]:
             if part.isdigit():
                 fps = int(part)
-
+        name = psuedo_name
         return name, fps, looping_frames, is_dead
 
     def rename_to_dead(name):
@@ -201,6 +180,7 @@ def save_animation_config(context):
     if q3_props.fixedlegs:
         output += "fixedlegs\n"
     output += "\n// first frame, num frames, looping frames, frames per second\n\n"
+    output += "\n// ff -- nf --- lf --- fps\n\n"
 
     # Iterate through all NLA tracks
     objects = [q3_props.selected_object] if q3_props.selected_object else bpy.data.objects
@@ -208,16 +188,19 @@ def save_animation_config(context):
         if obj and obj.animation_data and obj.animation_data.nla_tracks:
             for track in obj.animation_data.nla_tracks:
                 for strip in track.strips:
-                    if strip.name in ['BOTH_DEAD1', 'BOTH_DEAD2', 'BOTH_DEAD3']:
-                        continue
+                    original_action_name = strip.action.name
                     start_frame = int(strip.frame_start)
                     if q3_props.offset_cgf_by_1:
                         start_frame += 1
                     end_frame = int(strip.frame_end)
                     num_frames = end_frame - start_frame
-                    num_frames = max(1, num_frames)
+                    if num_frames == 0:
+                        num_frames = 1
+                    else:
+                        num_frames += 1
 
-                    name, fps, looping_frames, is_dead = parse_action_name(strip.name)
+
+                    name, fps, looping_frames, is_dead = parse_action_name(original_action_name, strip.name)
                     if looping_frames == -1:
                         looping_frames = num_frames
 
@@ -226,7 +209,7 @@ def save_animation_config(context):
 
                     if is_dead:
                         dead_name = rename_to_dead(name)
-                        output += f"{end_frame - 1}\t1\t0\t{fps}\t\t// {dead_name}\n"
+                        output += f"{end_frame - 0}\t1\t0\t{fps}\t\t// {dead_name}\n"
     q3_props.selected_object = restore
     return output
 
@@ -242,12 +225,30 @@ class Q3OpenCheatsheetOperator(bpy.types.Operator):
 class Q3ImportActionsOperator(bpy.types.Operator):
     bl_idname = "q3.import_actions"
     bl_label = "Import Actions"
-    bl_description = "Compile Actions to NLA for export and animation sequence read."
+    bl_description = "Compile Actions to NLA for export and animation sequence read. Action format: [num]NAME[loop][die]"
     def execute(self, context):
         scene = context.scene
         q3_props = scene.q3_animation_config
         selected_objects = bpy.context.selected_objects
         check = bpy.data.objects.get("NLA-Compiler")
+
+        ### Make list from all actions in order with numeric prefixes like: 0_BOTH_DEATH1, 1_BOTH_DEATH2, etc
+        all_actions = []
+        print("All Actions:")
+        
+        for action in bpy.data.actions:
+            if '[' in action.name and ']' in action.name:
+                prefix = action.name.split("[")[1].split("]")[0]
+                if prefix.isdigit():
+                    all_actions.append(action.name)
+        all_actions.sort(key=lambda x: int(x.split("[")[1].split("]")[0]))
+        print(all_actions)
+        all_actions_without_brackets = [re.sub(r'\[.*?\]', '', action) for action in all_actions]
+
+        print("All Actions without prefix:")
+        print(all_actions_without_brackets)
+        ###
+
         if q3_props.selected_object is check:
             q3_props.selected_object = None
         obj = q3_props.selected_object
@@ -286,53 +287,20 @@ class Q3ImportActionsOperator(bpy.types.Operator):
             if active_object_at_the_time is not None:
                 bpy.context.view_layer.objects.active = bpy.data.objects[active_object_at_the_time.name]
 
-        if q3_props.fill_dead:
-            death_actions = ["BOTH_DEATH1", "BOTH_DEATH2", "BOTH_DEATH3"]
-            for death_action_name in death_actions:
-                death_action = bpy.data.actions.get(death_action_name)
-                if death_action:
-                    last_frame = death_action.frame_range[1]
-                    new_action_name = f"BOTH_DEAD{death_actions.index(death_action_name) + 1}"
-                    new_action = bpy.data.actions.new(new_action_name)
-                    new_action.frame_range = (last_frame, last_frame)
-                    new_action.use_fake_user = True  # Set to True to prevent deletion
-                    new_action["auto_created"] = True
-        else: 
-            for action in bpy.data.actions:
-                if "auto_created" in action and action["auto_created"]:
-                    bpy.data.actions.remove(action)
-
-        actions = [
-            "BOTH_DEATH1", "BOTH_DEAD1", "BOTH_DEATH2", "BOTH_DEAD2", "BOTH_DEATH3", "BOTH_DEAD3",
-            "TORSO_GESTURE", "TORSO_ATTACK", "TORSO_ATTACK2", "TORSO_DROP", "TORSO_RAISE", "TORSO_STAND",
-            "TORSO_STAND2", "LEGS_WALKCR", "LEGS_WALK", "LEGS_RUN", "LEGS_BACK", "LEGS_SWIM", "LEGS_JUMP",
-            "LEGS_LAND", "LEGS_JUMPB", "LEGS_LANDB", "LEGS_IDLE", "LEGS_IDLECR", "LEGS_TURN",
-            "TORSO_GETFLAG", "TORSO_GUARDBASE", "TORSO_PATROL", "TORSO_FOLLOWME", "TORSO_AFFIRMATIVE", "TORSO_NEGATIVE"
-        ]
-
         track = obj.animation_data.nla_tracks.new(prev=None)
         track.name = "Q3ANIM"
         frame_offset = 0
 
-        trim_actions = [
-            "TORSO_STAND", "TORSO_STAND2", "LEGS_WALKCR", "LEGS_WALK", "LEGS_RUN", "LEGS_BACK", "LEGS_SWIM", "LEGS_IDLE", "LEGS_IDLECR", "LEGS_TURN"
-        ]
-
-        for action_name in actions:
+        for action_name in all_actions:
             action = bpy.data.actions.get(action_name)
             if action:
+                action_name_without_brackets = re.sub(r'\[.*?\]', '', action_name)
                 strip = track.strips.new(action_name, int(frame_offset), action)
+                strip.name = action_name_without_brackets
                 strip.action = action
-
-                # Trim ends if enabled and action is in trim_actions list
-                if q3_props.trim_ends and action_name in trim_actions and strip.frame_end - strip.frame_start > 1:
-                    strip.frame_end -= 1
-
                 frame_offset += strip.frame_end - strip.frame_start
         bpy.context.scene.frame_end = int(frame_offset)
-
-        
-
+     
         if q3_props.mark_frames:
 
                     bpy.ops.object.empty_add(type='ARROWS', location=(0, 0, 0))
@@ -390,9 +358,6 @@ class Q3ImportActionsOperator(bpy.types.Operator):
                         kp.interpolation = 'CONSTANT'
                     for kp in fcurve_z.keyframe_points:
                         kp.interpolation = 'CONSTANT'
-
-
-
 
         if bpy.context.object is not None:
             if bpy.context.object.mode == 'OBJECT':
