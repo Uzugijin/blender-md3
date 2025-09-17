@@ -1,7 +1,8 @@
 # grouping to surfaces must done by UV maps also, not only normals
 # TODO: merge surfaces with same uv maps and texture
 # TODO: check bounding sphere calculation
-
+#line 158 "return co" modified to "return co * 10" 
+#line 337 added static variable
 
 import re
 from collections import defaultdict
@@ -34,9 +35,10 @@ def get_textures(material):
 def gather_shader_info(mesh):
     'Returning uvmap name, texture name list'
     uv_maps = mesh.uv_layers
-
+    materials = []
     for material in mesh.materials:
         textures = get_textures(material)
+        materials.append(material.name)
         
         for texture_slot in textures:
             if (
@@ -48,11 +50,11 @@ def gather_shader_info(mesh):
     if len(uv_maps) <= 0:
         print('Warning: No UV maps found, zero filling will be used')
         return None, []
-    elif len(uv_maps) == 1:
-        return uv_maps.active.name, [uv_maps.active]
+    elif len(uv_maps) == 1 or len(materials) == 1:
+        return uv_maps.active.name, materials[0]
     else:
         print('Warning: Multiple UV maps found, only one will be chosen')
-        return uv_maps.active.name, [uv_maps.active]
+        return uv_maps.active.name, materials[0]
 
 
 def gather_vertices(mesh, uvmap_data=None):
@@ -102,6 +104,14 @@ class MD3Exporter:
     @property
     def scene(self):
         return self.context.scene
+    
+    @property
+    def scale_multiplier(self):
+        return self.context.scene.q3_animation_config.scale_multiplier
+    
+    @property
+    def mapobject(self):
+        return self.context.scene.q3_animation_config.mapobject
 
     def pack_tag(self, name):
         tag = self.scene.objects[name]
@@ -122,7 +132,7 @@ class MD3Exporter:
 
     def pack_surface_shader(self, i):
         return fmt.Shader.pack(
-            name=prepare_name(self.mesh_shader_list[i].name),
+            name=prepare_name(self.mesh_shader_list),
             index=i,
         )
 
@@ -153,7 +163,7 @@ class MD3Exporter:
 
         co = self.mesh_matrix @ co
         self.mesh_vco[frame].append(co)
-        return co
+        return co * self.scale_multiplier
 
     def pack_surface_vert(self, frame, i):
         loop_id = self.mesh_md3vert_to_loop[i]
@@ -332,7 +342,11 @@ class MD3Exporter:
             )
 
     def __call__(self, filename):
-        self.nFrames = self.scene.frame_end - self.scene.frame_start + 1
+        #static = True
+        if self.mapobject:
+            self.nFrames = 1
+        else:
+            self.nFrames = self.scene.frame_end - self.scene.frame_start + 1
         self.surfNames = []
         self.tagNames = []
         for o in bpy.context.selected_objects:
