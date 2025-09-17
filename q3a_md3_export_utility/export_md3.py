@@ -10,12 +10,11 @@ from math import sqrt
 
 import bpy
 import mathutils
-
+import bmesh
 from . import fmt_md3 as fmt
 from .utils import OffsetBytesIO
 
 nums = re.compile(r'\.\d{3}$')
-
 
 def prepare_name(name):
     if nums.findall(name):
@@ -56,7 +55,6 @@ def gather_shader_info(mesh):
         print('Warning: Multiple UV maps found, only one will be chosen')
         return uv_maps.active.name, materials[0]
 
-
 def gather_vertices(mesh, uvmap_data=None):
     md3vert_to_loop_map = []
     loop_to_md3vert_map = []
@@ -76,10 +74,8 @@ def gather_vertices(mesh, uvmap_data=None):
 
     return md3vert_to_loop_map, loop_to_md3vert_map
 
-
 def interp(a, b, t):
     return (b - a) * t + a
-
 
 def find_interval(vs, t):
     a, b = 0, len(vs) - 1
@@ -95,7 +91,6 @@ def find_interval(vs, t):
             a = c
     assert vs[a] <= t <= vs[b]
     return a, b
-
 
 class MD3Exporter:
     def __init__(self, context):
@@ -213,8 +208,7 @@ class MD3Exporter:
     def pack_surface(self, surf_name):
         obj = self.scene.objects[surf_name]
         bpy.context.view_layer.objects.active = obj
-        bpy.ops.object.modifier_add(type='TRIANGULATE')  # no 4-gons or n-gons
-        bpy.ops.object.modifier_apply(modifier=obj.modifiers[-1].name)
+        
         dg = bpy.context.evaluated_depsgraph_get()
         self.mesh = obj.to_mesh(preserve_all_data_layers=True, depsgraph=dg)
 
@@ -225,18 +219,62 @@ class MD3Exporter:
 
         nShaders = len(self.mesh_shader_list)
         nVerts = len(self.mesh_md3vert_to_loop)
-        nTris = len(self.mesh.polygons)
-
-        # Apply the triangulate modifier
-        #bpy.ops.object.modifier_apply(modifier=obj.modifiers[-1].name)
-
+        
+        # Use bmesh for proper triangulation that matches Blender's behavior
+        bm = bmesh.new()
+        bm.from_mesh(self.mesh)
+        
+        # Ensure we're working with triangles using Blender's triangulation
+        bmesh.ops.triangulate(bm, faces=bm.faces, quad_method='BEAUTY', ngon_method='BEAUTY')
+        
+        # Now build our triangle list from the triangulated bmesh
+        nTris_actual = 0
+        triangulated_faces = []
+        
+        # Create a mapping from original loops to md3vert indices
+        loop_to_md3vert_map = {}
+        for md3vert_idx, loop_idx in enumerate(self.mesh_md3vert_to_loop):
+            loop_to_md3vert_map[loop_idx] = md3vert_idx
+        
+        # Process each face in the triangulated mesh
+        for face in bm.faces:
+            if len(face.verts) != 3:
+                continue  # Shouldn't happen after triangulation, but just in case
+                
+            # Get the loop indices for this face
+            loop_indices = []
+            for loop in face.loops:
+                # Find the original loop index that corresponds to this bmesh loop
+                # This is a bit complex because we need to map back to the original mesh
+                for orig_loop_idx, md3vert_idx in enumerate(self.mesh_loop_to_md3vert):
+                    if (self.mesh.loops[orig_loop_idx].vertex_index == loop.vert.index and
+                        orig_loop_idx in loop_to_md3vert_map):
+                        loop_indices.append(orig_loop_idx)
+                        break
+            
+            if len(loop_indices) == 3:
+                # Convert loop indices to md3vert indices
+                a = loop_to_md3vert_map.get(loop_indices[0], loop_indices[0])
+                b = loop_to_md3vert_map.get(loop_indices[1], loop_indices[1])
+                c = loop_to_md3vert_map.get(loop_indices[2], loop_indices[2])
+                
+                triangulated_faces.append((a, c, b))  # swapped c/b
+                nTris_actual += 1
+        
+        # Clean up bmesh
+        bm.free()
+        
         self.scene.frame_set(self.scene.frame_start)
 
         f = OffsetBytesIO(start_offset=fmt.Surface.size)
         f.mark('offShaders')
         f.write(b''.join([self.pack_surface_shader(i) for i in range(nShaders)]))
         f.mark('offTris')
-        f.write(b''.join([self.pack_surface_triangle(i) for i in range(nTris)]))
+        
+        # Write all triangles
+        triangle_data = b''.join([fmt.Triangle.pack(a, b, c) for a, b, c in triangulated_faces])
+        f.write(triangle_data)
+        
         f.mark('offST')
         f.write(b''.join([self.pack_surface_ST(i) for i in range(nVerts)]))
         f.mark('offVerts')
@@ -247,13 +285,10 @@ class MD3Exporter:
 
         f.mark('offEnd')
 
-        # release here, to_mesh used for every frame
-        #bpy.ops.object.modifier_remove(modifier=obj.modifiers[-1].name)
-
         print('Surface {}: nVerts={}{} nTris={}{} nShaders={}{}'.format(
             surf_name,
             nVerts, ' (Too many!)' if nVerts > 4096 else '',
-            nTris, ' (Too many!)' if nTris > 8192 else '',
+            nTris_actual, ' (Too many!)' if nTris_actual > 8192 else '',
             nShaders, ' (Too many!)' if nShaders > 256 else '',
         ))
 
@@ -264,7 +299,7 @@ class MD3Exporter:
             nFrames=self.nFrames,
             nShaders=nShaders,
             nVerts=nVerts,
-            nTris=nTris,
+            nTris=nTris_actual,
             **f.getoffsets()
         ) + f.getvalue()
 
@@ -296,50 +331,30 @@ class MD3Exporter:
 
     def pack_frame(self, i):
         track_name = "Q3ANIM"
-        obj = None
-        for o in bpy.data.objects:
-            if o.animation_data and track_name in o.animation_data.nla_tracks:
-                obj = o
-                break
+        frame_name = 'Unknown'
+        
+        # Find object with Q3ANIM track
+        obj = next((o for o in bpy.data.objects 
+                if o.animation_data and track_name in o.animation_data.nla_tracks), None)
+        
         if obj:
             q3anim_track = obj.animation_data.nla_tracks.get(track_name)
             if q3anim_track:
                 # Find the strip that is active at the current frame
-                active_strip = None
-                for strip in q3anim_track.strips:
-                    if strip.frame_start <= i <= strip.frame_end:
-                        active_strip = strip
-                        break
+                active_strip = next((strip for strip in q3anim_track.strips 
+                                    if strip.frame_start <= i <= strip.frame_end), None)
                 if active_strip:
                     # Calculate the frame number within the strip
                     frame_number = i - active_strip.frame_start
                     # Use the name and frame number of the active strip as the frame name
-                    return fmt.Frame.pack(
-                        localOrigin=(0.0, 0.0, 0.0),
-                        name=f"{active_strip.name}_{int(frame_number)}",
-                        **self.get_frame_data(i)
-                    )
-                else:
-                    # If no strip is active at the current frame, use a default name
-                    return fmt.Frame.pack(
-                        localOrigin=(0.0, 0.0, 0.0),
-                        name='Unknown',
-                        **self.get_frame_data(i)
-                    )
-            else:
-                # If the track doesn't exist, use a default name
-                return fmt.Frame.pack(
-                    localOrigin=(0.0, 0.0, 0.0),
-                    name='Unknown',
-                    **self.get_frame_data(i)
-                )
-        else:
-            # If the track doesn't exist, use a default name
-            return fmt.Frame.pack(
-                localOrigin=(0.0, 0.0, 0.0),
-                name='Unknown',
-                **self.get_frame_data(i)
-            )
+                    frame_name = f"{active_strip.name}_{int(frame_number)}"
+        
+        # Pack the frame with the determined name
+        return fmt.Frame.pack(
+            localOrigin=(0.0, 0.0, 0.0),
+            name=frame_name,
+            **self.get_frame_data(i)
+        )
 
     def __call__(self, filename):
         #static = True
