@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Q3A MD3 Export Utility",
     "author": "Vitaly Verhovodov, Aleksander Marhall, Uzugijin",
-    "version": (0, 5, 1),
+    "version": (0, 5, 2),
     "blender": (4, 00, 0),
     "category": "Import-Export",
     "location": "Nonlinear Animation > Side panel (N) > Q3A MD3 XU",
