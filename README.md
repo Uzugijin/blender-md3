@@ -14,7 +14,7 @@ Names with .001 and alike will be ommited that will result in throwing away data
 
 What the export addon handles:  
 
-1. Selected mesh <objects> (object names doesn't matter, it doesn't expect h_, u_, l_ names to exist, they can be assigned in maverick or npherno - but can be assigned in blender via OBJECT names) - Q3 MD3 XU only: Addon triangulates meshes with BEAUTY - Floating edges or vertices will be omited - If nothing is selected, the whole scene will be attempted for export. Unhandled object types will be ignored.  
+1. Selected mesh <objects> (object names doesn't matter, it doesn't expect h_, u_, l_ names to exist, they can be assigned in maverick or npherno - but can be assigned in blender via OBJECT names) - Addon triangulates meshes with BEAUTY - Floating edges or vertices will be omited - If nothing is selected, the whole scene will be attempted for export. Unhandled object types will be ignored.  
 				
 2. Selected empty <objects> of Arrows type. (empty type can be changed in blender) (empty names doesn't matter, it doesn't expect tag_* names to exist, they can be assigned in maverick or npherno - but can be assigned in blender via OBJECT names)- does not throw any error if there is no empty or empty type is different. If empty attached to bone as tag, the animation should be baked or at least so I heard.  
    
