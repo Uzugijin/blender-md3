@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Q3A MD3 Export Utility",
     "author": "Vitaly Verhovodov, Aleksander Marhall, Uzugijin",
-    "version": (0, 5, 2),
+    "version": (0, 6, 0),
     "blender": (4, 00, 0),
     "category": "Import-Export",
     "location": "Nonlinear Animation > Side panel (N) > Q3A MD3 XU",
@@ -21,12 +21,11 @@ class Q3AnimationConfigProperties(bpy.types.PropertyGroup):
     selected_object: bpy.props.PointerProperty(name="Target object to import actions to", type=bpy.types.Object, description="Recommended for single skeleton, otherwise leave blank to generate a dummy")
     fixedtorso: bpy.props.BoolProperty(name="Fixed Torso", default=False, description="Don't rotate torso pitch when looking up or down")
     fixedlegs: bpy.props.BoolProperty(name="Fixed Legs", default=False, description="Don't rotate legs (always align with torso)")
-    mark_frames: bpy.props.BoolProperty(name="Mark Actions", default=True, description="Mark the first frame of every strip in the NLA track")
-    offset_cgf_by_1: bpy.props.BoolProperty(name="Offset By 1", default=False, description="Offsets animation sequence forward by 1 frame for marker and animation.cfg")
+    mark_frames: bpy.props.BoolProperty(name="Mark Actions", default=False, description="Mark the first frame of every strip in the NLA track")
+    offset_cgf_by_1: bpy.props.BoolProperty(name="Offset By 1", default=True, description="Offsets animation sequence forward by 1 frame for marker and animation.cfg (Recommended)")
     anim_cfg_enabled: bpy.props.BoolProperty(name="Animation Config", default=True, description="Generate animation.cfg on export")
     skin_enabled: bpy.props.BoolProperty(name="Skin Config", default=True, description="Generate .skin file templates on export")
     scale_multiplier: bpy.props.IntProperty(name="Model Scale", default=10, description="Scale up model by a multiplier")
-    mapobject: bpy.props.BoolProperty(name="Mapobject", default=False, description="Mapobjects won't get frame counted")
     sex_defined: bpy.props.EnumProperty(
         items=[
             ("sex n", "Neutral", ""),
@@ -47,6 +46,14 @@ class Q3AnimationConfigProperties(bpy.types.PropertyGroup):
         name="Footsteps",
         default="footsteps normal",
     )
+    modeltype: bpy.props.EnumProperty(
+        items=[
+            ("animated", "Animated", ""),
+            ("static", "Static", ""),
+        ],
+        name="Type",
+        default="animated",
+    )
 
 class Q3AnimationConfigPanel(bpy.types.Panel):
     bl_label = "Q3A MD3 Export Utility"
@@ -61,42 +68,44 @@ class Q3AnimationConfigPanel(bpy.types.Panel):
         q3_props = scene.q3_animation_config
 
         row = layout.row()
-        row.prop(q3_props, "selected_object", text="Target")
+        row.prop(q3_props, "modeltype")
         row = layout.row()
-        row.prop(context.scene.q3_animation_config, "mark_frames", text="Mark First Frame of Strips", toggle=False)
-        row = layout.row()
-        row.prop(context.scene.q3_animation_config, "offset_cgf_by_1", text="Offset Sequence", toggle=False)
-        row = layout.row()
-        row.prop(context.scene.q3_animation_config, "mapobject", text="Mapobject", toggle=False)
-        row = layout.row()
-        row.prop(context.scene.q3_animation_config, "scale_multiplier", text="Scale")
+        row.prop(q3_props, "scale_multiplier", text="Scale")
+        if not q3_props.modeltype == "static":
+            row = layout.row()
+            row.prop(q3_props, "selected_object", text="Target")
+            row = layout.row()
+            row.prop(q3_props, "mark_frames", text="Mark First Frame of Strips", toggle=False)
+            row = layout.row()
+            row.prop(q3_props, "offset_cgf_by_1", text="Offset Sequence by 1", toggle=False)
+            row = layout.row()
 
-        row = layout.row()
-        row.operator("q3.import_actions", text="(Re)Build NLA")
+            row = layout.row()
+            row.operator("q3.import_actions", text="(Re)Build NLA")
 
         row = layout.row()
         box = layout.box()
         row = box.row()
         row.label(text="Animation.cfg:")
-        if not q3_props.mapobject:
-            row.prop(context.scene.q3_animation_config, "anim_cfg_enabled", text="Generate", toggle=False)
+        if not q3_props.modeltype == "static":
+            row.prop(q3_props, "anim_cfg_enabled", text="Generate", toggle=False)
 
-            if context.scene.q3_animation_config.anim_cfg_enabled:
+            if q3_props.anim_cfg_enabled:
                 row = box.row()
                 row.prop(q3_props, "sex_defined")
                 row = box.row()
                 row.prop(q3_props, "footsteps_defined")
 
                 row = box.row()
-                row.prop(context.scene.q3_animation_config, "fixedtorso", text="Fixed Torso", toggle=False)
-                row.prop(context.scene.q3_animation_config, "fixedlegs", text="Fixed Legs", toggle=False)
+                row.prop(q3_props, "fixedtorso", text="Fixed Torso", toggle=False)
+                row.prop(q3_props, "fixedlegs", text="Fixed Legs", toggle=False)
         else:
             row.label(text="-")
 
         box = layout.box()
         row = box.row()
         row.label(text="Skin Template:")
-        if not q3_props.mapobject:
+        if not q3_props.modeltype == "static":
             row.prop(q3_props, "skin_enabled", text="Generate", toggle=False)
         else:
             row.label(text="-")
@@ -388,7 +397,6 @@ class ExportMD3(bpy.types.Operator, ExportHelper):
     filter_glob = StringProperty(default="*.md3;*.cfg", options={'HIDDEN'})
 
     def invoke(self, context, event):
-        props = bpy.context.scene.q3_animation_config
         self.filename_ext = ".md3"
         return ExportHelper.invoke(self, context, event)
 
@@ -403,17 +411,16 @@ class ExportMD3(bpy.types.Operator, ExportHelper):
             
             filepath = self.properties.filepath
             
-           
             if not bpy.context.selected_objects:
                 bpy.ops.object.select_all(action='SELECT')
                 self.report({'WARNING'}, "Assuming all objects")
 
             MD3Exporter(context)(self.properties.filepath)
-            if props.anim_cfg_enabled and not props.mapobject:
+            if props.anim_cfg_enabled and not props.modeltype == "static":
                 animation_cfg_path = filepath.replace('.md3', '_animation.cfg')
                 with open(animation_cfg_path, 'w') as f:
                     f.write(save_animation_config(context))
-            if props.skin_enabled and not props.mapobject:
+            if props.skin_enabled and not props.modeltype == "animated":
                 head_text, upper_text, lower_text, is_head, is_upper, is_lower = save_skin_file(context)
                 if is_head:
                     with open(self.properties.filepath.replace('.md3', '_head_default.skin'), 'w') as f:

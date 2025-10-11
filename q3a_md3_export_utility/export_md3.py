@@ -105,8 +105,8 @@ class MD3Exporter:
         return self.context.scene.q3_animation_config.scale_multiplier
     
     @property
-    def mapobject(self):
-        return self.context.scene.q3_animation_config.mapobject
+    def modeltype(self):
+        return self.context.scene.q3_animation_config.modeltype
 
     def pack_tag(self, name):
         tag = self.scene.objects[name]
@@ -358,7 +358,7 @@ class MD3Exporter:
 
     def __call__(self, filename):
         #static = True
-        if self.mapobject:
+        if self.modeltype == "static":
             self.nFrames = 1
         else:
             self.nFrames = self.scene.frame_end - self.scene.frame_start + 1
