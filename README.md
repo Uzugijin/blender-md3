@@ -6,7 +6,7 @@ Now works with Blender ≥ 4.1.0
 Can work with animations in any form (no need to bake to Shape Keys), textures and md3 tags (added as Empty objects).  
 Used [this](http://www.icculus.org/homepages/phaethon/q3a/formats/md3format.html) format reference.  
 
-Classic version of the addon is no longer updated by me. This fork is all about Quake 3 Arena MD3 Export Utility now which is connected to the Nonlinear Animation workspace.  
+Classic version of the addon is no longer in development here. Refer to [Khreathor](https://github.com/khreathor/blender-md3) for a maintained fork. This one is all about Quake 3 Arena MD3 Export Utility now which is connected to the Nonlinear Animation workspace.
 
 ## Manual for Playermodel exporting:  
 CONSTRAINTS do not work! (unless animation is baked - not confirmed) Parenting does!  
