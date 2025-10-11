@@ -6,7 +6,7 @@ Now works with Blender ≥ 4.1.0
 Can work with animations in any form (no need to bake to Shape Keys), textures and md3 tags (added as Empty objects).  
 Used [this](http://www.icculus.org/homepages/phaethon/q3a/formats/md3format.html) format reference.  
 
-Classic version of the addon is no longer updated by me. This fork is all about [Q3 MD3 XU](https://github.com/Uzugijin/blender-md3/releases/tag/experimental) now which is connected to the Nonlinear Animation workspace.  
+Classic version of the addon is no longer updated by me. This fork is all about Quake3 MD3 Export Utility now which is connected to the Nonlinear Animation workspace.  
 
 ## Manual for Playermodel exporting:  
 CONSTRAINTS do not work! (unless animation is baked - not confirmed) Parenting does!  
@@ -23,6 +23,6 @@ What the export addon handles:
 
 4. Material name will be used as path for quake 3 material / texture. (Note - You must export texture as Targa RAW for quake 3.) - Throws error if there are no materials.  
 
-## Supported versions  
+## Currently supported blender versions  
 
-4.1 and up for a while. This addon will probably not work with versions before 4.0   
+4.1 up to 4.5.3
