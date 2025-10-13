@@ -48,9 +48,9 @@ class Q3AnimationConfigProperties(bpy.types.PropertyGroup):
     )
     modeltype: bpy.props.EnumProperty(
         items=[
-            ("assembly", "Composite", "Exports selection with or without animation"),
-            ("animated", "Single Animated", "Exports selection with animation into a single MD3 file, supports skin and animation config file generation."),
-            ("static", "Static", "Exports selection without animation")
+            ("assembly", "Composite", "Exports multiple MD3 files based on group composition. Supports skin and animation config file generation."),
+            ("animated", "Single Animated", "Exports selection with animation as a single MD3 file, supports skin (requires groups) and animation config file generation."),
+            ("static", "Snapshot", "Exports the current frame as a single MD3 file.")
         ],
         name="Type",
         default="assembly",
